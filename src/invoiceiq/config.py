@@ -35,6 +35,8 @@ class Settings(BaseSettings):
 
     tesseract_cmd: str = ""
     ocr_language: str = "eng"
+    ocr_min_text_chars: int = 50
+    ocr_render_dpi: int = 200
 
     max_upload_mb: int = 10
     data_dir: Path = PROJECT_ROOT / "data"

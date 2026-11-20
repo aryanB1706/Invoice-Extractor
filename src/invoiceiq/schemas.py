@@ -39,6 +39,7 @@ class PageText(BaseModel):
     page_number: int
     text: str
     used_ocr: bool = False
+    error: str | None = None
 
 
 class ValidationIssue(BaseModel):

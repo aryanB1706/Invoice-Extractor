@@ -1,6 +1,16 @@
 """Document loading and OCR utilities."""
 
-from invoiceiq.document_processing.loader import SUPPORTED_EXTENSIONS, load_document
-from invoiceiq.document_processing.ocr import image_to_text
+from invoiceiq.document_processing.loader import (
+    SUPPORTED_EXTENSIONS,
+    DocumentProcessingError,
+    load_document,
+)
+from invoiceiq.document_processing.ocr import OCRError, image_to_text
 
-__all__ = ["SUPPORTED_EXTENSIONS", "load_document", "image_to_text"]
+__all__ = [
+    "SUPPORTED_EXTENSIONS",
+    "DocumentProcessingError",
+    "OCRError",
+    "load_document",
+    "image_to_text",
+]

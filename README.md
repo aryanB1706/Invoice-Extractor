@@ -138,11 +138,14 @@ Implemented:
 
 - Configuration management
 - Shared Pydantic schemas
-- PDF text extraction and OCR helper
+- Digital PDF text extraction with PyMuPDF
+- Per-page OCR fallback for scanned or low-text PDF pages
+- JPG, JPEG, PNG, TIFF, and BMP OCR support
+- Graceful handling of blank pages, unreadable images, and corrupt PDFs
 - Basic validation rules
 - FastAPI health endpoint
 - CLI document loader
-- Test skeleton
+- Tests for digital PDFs, scanned PDFs, images, and failure cases
 
 Reserved for the next prompts:
 
