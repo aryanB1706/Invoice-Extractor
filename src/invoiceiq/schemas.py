@@ -20,6 +20,17 @@ class Invoice(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
+    is_invoice: bool = Field(
+        default=True,
+        description=(
+            "True when the document is an invoice, bill, or tax invoice. "
+            "False for contracts, letters, statements, or unrelated documents."
+        ),
+    )
+    extraction_notes: str | None = Field(
+        default=None,
+        description="Brief note when the document is not an invoice or extraction is limited.",
+    )
     vendor_name: str | None = None
     vendor_address: str | None = None
     invoice_number: str | None = None
@@ -54,3 +65,19 @@ class ValidationReport(BaseModel):
 
     is_valid: bool
     issues: list[ValidationIssue] = Field(default_factory=list)
+
+
+class TokenUsage(BaseModel):
+    """Token counts reported by the LLM provider."""
+
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+class ExtractionResult(BaseModel):
+    """Invoice plus metadata produced by the extraction layer."""
+
+    invoice: Invoice
+    model: str | None = None
+    usage: TokenUsage | None = None

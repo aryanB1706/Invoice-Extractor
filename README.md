@@ -39,6 +39,7 @@ InvoiceIQ/
 │   │   ├── loader.py            # Detects file type and loads page text
 │   │   └── ocr.py               # Image-to-text conversion
 │   ├── extraction/              # LangChain + Groq extraction layer
+│   │   ├── errors.py            # Domain errors for API, parsing, and config failures
 │   │   ├── prompts.py           # System and human prompt templates
 │   │   └── extractor.py         # Groq client factory and extractor
 │   ├── validation/              # Rule-based checks on extracted invoices
@@ -102,8 +103,12 @@ Copy-Item .env.example .env
 ```
 
 Then set `GROQ_API_KEY` in `.env`. `GROQ_MODEL` is already provided and can be
-changed without modifying code. If Tesseract is not on `PATH`, set
-`TESSERACT_CMD` to the full executable path.
+changed without modifying code. Use a Groq text model that supports tool calling
+and structured output; `llama-3.3-70b-versatile` is the default recommendation.
+If Tesseract is not on `PATH`, set `TESSERACT_CMD` to the full executable path.
+
+Generation settings are configurable with `GROQ_TEMPERATURE`,
+`GROQ_MAX_TOKENS`, `GROQ_TIMEOUT_SECONDS`, and `GROQ_MAX_RETRIES`.
 
 ### 3. Install Tesseract OCR
 
@@ -142,6 +147,10 @@ Implemented:
 - Per-page OCR fallback for scanned or low-text PDF pages
 - JPG, JPEG, PNG, TIFF, and BMP OCR support
 - Graceful handling of blank pages, unreadable images, and corrupt PDFs
+- LangChain `ChatGroq` client configured entirely from environment variables
+- Strict invoice prompt with line-item, date, and non-invoice rules
+- Structured invoice extraction with token-usage capture
+- Domain errors for rate limits, timeouts, authentication, API failures, and parsing
 - Basic validation rules
 - FastAPI health endpoint
 - CLI document loader
@@ -149,7 +158,6 @@ Implemented:
 
 Reserved for the next prompts:
 
-- Groq prompt invocation and structured extraction
 - Upload persistence and full `/extract` behavior
 - Dataset evaluation metrics
 - Accuracy reporting

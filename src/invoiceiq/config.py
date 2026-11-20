@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     groq_model: str = ""
     groq_temperature: float = 0.0
     groq_max_tokens: int = 2048
+    groq_timeout_seconds: float = 30.0
+    groq_max_retries: int = 2
 
     tesseract_cmd: str = ""
     ocr_language: str = "eng"
