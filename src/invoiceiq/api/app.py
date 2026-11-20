@@ -11,7 +11,8 @@ def create_app() -> FastAPI:
     """Build and configure the FastAPI application."""
     settings = get_settings()
     application = FastAPI(title=settings.app_name, version=__version__)
-    application.include_router(router, prefix="/api/v1")
+    application.include_router(router)
+    application.include_router(router, prefix="/api/v1", include_in_schema=False)
 
     @application.get("/health", tags=["system"])
     def health() -> dict[str, str]:

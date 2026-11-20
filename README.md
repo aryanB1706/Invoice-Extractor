@@ -3,8 +3,9 @@
 AI invoice extraction pipeline built with Python, LangChain, Groq, FastAPI,
 PyMuPDF, Tesseract OCR, Pydantic, Pandas, and Pytest.
 
-This repository implements document processing and invoice extraction. The
-HTTP upload pipeline and dataset evaluation remain for later prompts.
+The application processes uploaded invoices through document processing, LLM
+extraction, schema validation, and mathematical business validation. Dataset
+evaluation remains for a later milestone.
 
 ## Architecture
 
@@ -165,6 +166,10 @@ uv run uvicorn invoiceiq.api.app:app --reload
 
 Open `http://127.0.0.1:8000/docs` for the generated API documentation.
 
+`POST /extract` accepts a PDF, JPG, JPEG, or PNG file and returns the invoice,
+validation report, and a `needs_review` flag. The versioned alias
+`POST /api/v1/extract` is also available. `GET /health` checks API availability.
+
 ### 5. Run the CLI
 
 ```powershell
@@ -196,11 +201,13 @@ Implemented:
 - Domain errors for rate limits, timeouts, authentication, API failures, and parsing
 - Validation for required fields and line-item/tax totals
 - FastAPI health endpoint
+- PDF and image upload extraction endpoint with upload checks and HTTP errors
+- Mathematical validation with configurable tolerance and review flags
 - CLI document loader
 - Tests for digital PDFs, scanned PDFs, images, prompts, extraction, schemas, and failures
 
 Reserved for the next prompts:
 
-- Upload persistence and full `/extract` behavior
+- Upload persistence
 - Dataset evaluation metrics
 - Accuracy reporting

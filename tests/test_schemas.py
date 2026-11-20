@@ -69,4 +69,19 @@ def test_calculation_is_skipped_when_amounts_are_missing() -> None:
 
     report = validate_invoice(invoice)
 
+    assert any(issue.field == "line_items" for issue in report.issues)
     assert all(issue.field != "total" for issue in report.issues)
+
+
+def test_missing_tax_is_not_assumed_to_be_zero() -> None:
+    report = validate_invoice(_invoice(tax_total=None))
+
+    assert any(issue.field == "tax_total" for issue in report.issues)
+    assert all(issue.field != "total" for issue in report.issues)
+
+
+def test_validation_tolerance_is_configurable() -> None:
+    invoice = _invoice(total=118.05)
+
+    assert validate_invoice(invoice, tolerance=0.1).is_valid is True
+    assert validate_invoice(invoice, tolerance=0.01).is_valid is False

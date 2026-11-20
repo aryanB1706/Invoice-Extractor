@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -40,7 +40,8 @@ class Settings(BaseSettings):
     ocr_min_text_chars: int = 50
     ocr_render_dpi: int = 200
 
-    max_upload_mb: int = 10
+    max_upload_mb: int = Field(default=10, ge=1)
+    invoice_amount_tolerance: float = Field(default=0.01, ge=0, allow_inf_nan=False)
     data_dir: Path = PROJECT_ROOT / "data"
     upload_dir: Path = PROJECT_ROOT / "data" / "uploads"
     output_dir: Path = PROJECT_ROOT / "data" / "outputs"

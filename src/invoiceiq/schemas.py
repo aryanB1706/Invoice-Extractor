@@ -122,3 +122,14 @@ class ExtractionResult(BaseModel):
     invoice: Invoice
     model: str | None = None
     usage: TokenUsage | None = None
+
+
+class ExtractionResponse(BaseModel):
+    """Public API response for a processed document."""
+
+    invoice: Invoice
+    validation: ValidationReport
+    needs_review: bool
+    warnings: list[str] = Field(default_factory=list)
+    model: str | None = None
+    usage: TokenUsage | None = None
