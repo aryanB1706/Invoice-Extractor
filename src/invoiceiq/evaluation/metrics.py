@@ -3,13 +3,11 @@
 from invoiceiq.schemas import Invoice
 
 SCORED_FIELDS = (
-    "vendor_name",
+    "vendor",
     "invoice_number",
     "invoice_date",
-    "due_date",
     "currency",
-    "subtotal",
-    "tax",
+    "tax_total",
     "total",
 )
 

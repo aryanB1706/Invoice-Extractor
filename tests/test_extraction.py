@@ -1,7 +1,6 @@
 """LLM extraction layer tests with a fake structured-output client."""
 
 from datetime import date
-from decimal import Decimal
 from typing import Any
 
 import groq
@@ -18,9 +17,21 @@ from invoiceiq.extraction import (
     LLMResponseError,
     LLMTimeoutError,
     build_llm,
+    extract_invoice,
 )
 from invoiceiq.extraction.prompts import INVOICE_EXTRACTION_PROMPT
 from invoiceiq.schemas import Invoice, LineItem
+
+REQUIRED_KEYS = {
+    "is_invoice",
+    "vendor",
+    "invoice_number",
+    "invoice_date",
+    "currency",
+    "line_items",
+    "tax_total",
+    "total",
+}
 
 
 class FakeStructuredLLM:
@@ -64,22 +75,34 @@ def _settings(model: str = "test-model") -> Settings:
 
 def _invoice() -> Invoice:
     return Invoice(
-        vendor_name="Acme Corporation",
+        is_invoice=True,
+        vendor="Acme Corporation",
         invoice_number="INV-2026-001",
         invoice_date=date(2026, 1, 15),
         currency="USD",
-        subtotal=Decimal("1000.00"),
-        tax=Decimal("180.00"),
-        total=Decimal("1180.00"),
         line_items=[
             LineItem(
                 description="Consulting",
-                quantity=Decimal("2"),
-                unit_price=Decimal("500.00"),
-                amount=Decimal("1000.00"),
+                quantity=2,
+                amount=1000.0,
             )
         ],
+        tax_total=180.0,
+        total=1180.0,
     )
+
+
+def _fake_extractor(parsed: Invoice, raw: AIMessage | None = None) -> tuple[
+    InvoiceExtractor, FakeStructuredLLM
+]:
+    llm = FakeStructuredLLM(
+        {
+            "raw": raw or AIMessage(content=""),
+            "parsed": parsed,
+            "parsing_error": None,
+        }
+    )
+    return InvoiceExtractor(llm=llm, settings=_settings()), llm
 
 
 def _rate_limit_error() -> groq.RateLimitError:
@@ -107,16 +130,21 @@ def test_build_llm_uses_environment_settings() -> None:
     assert llm.max_retries == 2
 
 
-def test_prompt_contains_extraction_rules() -> None:
+def test_prompt_contains_exact_extraction_rules() -> None:
     messages = INVOICE_EXTRACTION_PROMPT.format_messages(document_text="Invoice total 10")
     prompt_text = "\n".join(str(message.content) for message in messages)
 
     assert "Never invent" in prompt_text
     assert "is_invoice" in prompt_text
-    assert "YYYY-MM-DD" in prompt_text
-    assert "subtotal" in prompt_text
-    assert "tax" in prompt_text
+    assert "line_items" in prompt_text
+    assert "tax_total" in prompt_text
     assert "total" in prompt_text
+    assert "vendor" in prompt_text
+    assert "YYYY-MM-DD" in prompt_text
+    assert "bank statements" in prompt_text
+    assert "purchase orders" in prompt_text
+    assert "cover letters" in prompt_text
+    assert "subtotal" not in prompt_text
     assert "Invoice total 10" in prompt_text
 
 
@@ -129,10 +157,7 @@ def test_extract_returns_invoice_and_token_usage() -> None:
             "total_tokens": 165,
         },
     )
-    llm = FakeStructuredLLM(
-        {"raw": raw, "parsed": _invoice(), "parsing_error": None}
-    )
-    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+    extractor, llm = _fake_extractor(_invoice(), raw)
 
     result = extractor.extract("Invoice INV-2026-001 from Acme Corporation")
 
@@ -149,20 +174,34 @@ def test_extract_returns_invoice_and_token_usage() -> None:
     assert "Acme Corporation" in str(llm.received_messages[1].content)
 
 
-def test_extract_handles_non_invoice_response() -> None:
-    invoice = Invoice(
-        is_invoice=False,
-        extraction_notes="The document is a service agreement, not an invoice.",
-    )
-    llm = FakeStructuredLLM({"raw": AIMessage(content=""), "parsed": invoice})
-    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+def test_extract_invoice_function_returns_only_required_fields() -> None:
+    extractor, _ = _fake_extractor(_invoice())
 
-    result = extractor.extract("Service agreement between Acme and Beta.")
+    invoice = extract_invoice("Invoice text", extractor=extractor)
+    payload = invoice.model_dump(mode="json")
+
+    assert invoice == _invoice()
+    assert set(payload) == REQUIRED_KEYS
+    assert set(payload["line_items"][0]) == {"description", "quantity", "amount"}
+
+
+def test_non_invoice_has_null_fields_and_no_line_items() -> None:
+    invoice = Invoice(is_invoice=False)
+    extractor, _ = _fake_extractor(invoice)
+
+    result = extractor.extract("Bank statement for account 12345.")
 
     assert result.invoice.is_invoice is False
-    assert "not an invoice" in (result.invoice.extraction_notes or "")
-    assert result.invoice.vendor_name is None
-    assert result.invoice.total is None
+    assert result.invoice.model_dump(mode="json") == {
+        "is_invoice": False,
+        "vendor": None,
+        "invoice_number": None,
+        "invoice_date": None,
+        "currency": None,
+        "line_items": None,
+        "tax_total": None,
+        "total": None,
+    }
 
 
 def test_extract_falls_back_to_response_metadata_for_usage() -> None:
@@ -176,8 +215,7 @@ def test_extract_falls_back_to_response_metadata_for_usage() -> None:
             }
         },
     )
-    llm = FakeStructuredLLM({"raw": raw, "parsed": _invoice()})
-    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+    extractor, _ = _fake_extractor(_invoice(), raw)
 
     result = extractor.extract("Invoice text")
 
@@ -218,8 +256,7 @@ def test_timeout_is_mapped_to_domain_error() -> None:
 
 
 def test_empty_text_is_rejected() -> None:
-    llm = FakeStructuredLLM({"raw": AIMessage(content=""), "parsed": _invoice()})
-    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+    extractor, _ = _fake_extractor(_invoice())
 
     with pytest.raises(ValueError):
         extractor.extract("   ")

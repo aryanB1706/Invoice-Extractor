@@ -10,11 +10,12 @@ from invoiceiq.extraction.errors import (
     LLMResponseError,
     LLMTimeoutError,
 )
-from invoiceiq.extraction.extractor import InvoiceExtractor, build_llm
+from invoiceiq.extraction.extractor import InvoiceExtractor, build_llm, extract_invoice
 
 __all__ = [
     "InvoiceExtractor",
     "build_llm",
+    "extract_invoice",
     "LLMError",
     "LLMConfigurationError",
     "LLMAuthenticationError",

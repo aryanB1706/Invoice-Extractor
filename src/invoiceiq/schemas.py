@@ -1,7 +1,6 @@
 """Shared Pydantic models used across the pipeline."""
 
 from datetime import date
-from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -10,38 +9,31 @@ class LineItem(BaseModel):
     """A single line on an invoice."""
 
     description: str | None = None
-    quantity: Decimal | None = None
-    unit_price: Decimal | None = None
-    amount: Decimal | None = None
+    quantity: float | None = None
+    amount: float | None = None
 
 
 class Invoice(BaseModel):
-    """Structured invoice returned by the extraction step."""
+    """Invoice output matching the assignment's required JSON schema."""
 
     model_config = ConfigDict(extra="ignore")
 
     is_invoice: bool = Field(
-        default=True,
         description=(
-            "True when the document is an invoice, bill, or tax invoice. "
-            "False for contracts, letters, statements, or unrelated documents."
-        ),
+            "True for invoices, bills, or tax invoices. False for bank statements, "
+            "purchase orders, cover letters, and other documents."
+        )
     )
-    extraction_notes: str | None = Field(
-        default=None,
-        description="Brief note when the document is not an invoice or extraction is limited.",
-    )
-    vendor_name: str | None = None
-    vendor_address: str | None = None
+    vendor: str | None = None
     invoice_number: str | None = None
     invoice_date: date | None = None
-    due_date: date | None = None
     currency: str | None = None
-    subtotal: Decimal | None = None
-    tax: Decimal | None = None
-    total: Decimal | None = None
-    line_items: list[LineItem] = Field(default_factory=list)
-    raw_text: str | None = Field(default=None, exclude=True)
+    line_items: list[LineItem] | None = Field(
+        default=None,
+        description="All invoice line items. Null for non-invoices or when absent.",
+    )
+    tax_total: float | None = None
+    total: float | None = None
 
 
 class PageText(BaseModel):

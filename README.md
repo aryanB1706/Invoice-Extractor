@@ -3,9 +3,8 @@
 AI invoice extraction pipeline built with Python, LangChain, Groq, FastAPI,
 PyMuPDF, Tesseract OCR, Pydantic, Pandas, and Pytest.
 
-This repository currently contains the project skeleton. The pipeline is wired
-into clear stages, but extraction and dataset evaluation are reserved for the
-next implementation prompts.
+This repository implements document processing and invoice extraction. The
+HTTP upload pipeline and dataset evaluation remain for later prompts.
 
 ## Architecture
 
@@ -17,6 +16,40 @@ Document -> Document Processing -> LLM Extraction -> Validation -> API / CLI
 
 Each stage has a single responsibility and communicates through the Pydantic
 models in `src/invoiceiq/schemas.py`.
+
+## Extraction output
+
+`extract_invoice(document_text)` returns exactly this structure:
+
+```json
+{
+  "is_invoice": true,
+  "vendor": "Acme Supplies Pvt Ltd",
+  "invoice_number": "INV-2041",
+  "invoice_date": "2026-03-14",
+  "currency": "INR",
+  "line_items": [
+    {
+      "description": "A4 paper, 500 sheets",
+      "quantity": 10,
+      "amount": 3200.0
+    }
+  ],
+  "tax_total": 576.0,
+  "total": 3776.0
+}
+```
+
+For non-invoice documents, `is_invoice` is `false` and every other field is
+`null`, including `line_items`. Token usage and model metadata are available
+separately through `InvoiceExtractor.extract()`.
+
+```python
+from invoiceiq.extraction import extract_invoice
+
+invoice = extract_invoice(document_text)
+payload = invoice.model_dump(mode="json")
+```
 
 ## Project structure
 
@@ -43,7 +76,7 @@ InvoiceIQ/
 │   │   ├── prompts.py           # System and human prompt templates
 │   │   └── extractor.py         # Groq client factory and extractor
 │   ├── validation/              # Rule-based checks on extracted invoices
-│   │   └── validator.py         # Required fields, totals, and date checks
+│   │   └── validator.py         # Required fields, totals, and line-item checks
 │   ├── api/                     # FastAPI application
 │   │   ├── app.py               # App factory and health endpoint
 │   │   └── routes.py            # Upload/extract endpoint
@@ -149,12 +182,13 @@ Implemented:
 - Graceful handling of blank pages, unreadable images, and corrupt PDFs
 - LangChain `ChatGroq` client configured entirely from environment variables
 - Strict invoice prompt with line-item, date, and non-invoice rules
+- Reusable `extract_invoice(document_text)` function returning the exact JSON schema
 - Structured invoice extraction with token-usage capture
 - Domain errors for rate limits, timeouts, authentication, API failures, and parsing
-- Basic validation rules
+- Validation for required fields and line-item/tax totals
 - FastAPI health endpoint
 - CLI document loader
-- Tests for digital PDFs, scanned PDFs, images, and failure cases
+- Tests for digital PDFs, scanned PDFs, images, prompts, extraction, and failures
 
 Reserved for the next prompts:
 

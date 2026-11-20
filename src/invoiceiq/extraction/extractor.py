@@ -71,6 +71,10 @@ class InvoiceExtractor:
             usage=_extract_usage(raw_message),
         )
 
+    def extract_invoice(self, text: str) -> Invoice:
+        """Return only the assignment-shaped invoice data."""
+        return self.extract(text).invoice
+
     def _invoke(self, messages: list[Any]) -> Any:
         try:
             return self._structured_llm.invoke(messages)
@@ -143,3 +147,8 @@ def _extract_usage(message: Any | None) -> TokenUsage | None:
         )
 
     return None
+
+
+def extract_invoice(document_text: str, extractor: InvoiceExtractor | None = None) -> Invoice:
+    """Convert document text into the assignment's invoice structure."""
+    return (extractor or InvoiceExtractor()).extract_invoice(document_text)
