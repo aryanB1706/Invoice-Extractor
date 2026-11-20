@@ -92,6 +92,19 @@ def _invoice() -> Invoice:
     )
 
 
+def _non_invoice() -> Invoice:
+    return Invoice(
+        is_invoice=False,
+        vendor=None,
+        invoice_number=None,
+        invoice_date=None,
+        currency=None,
+        line_items=None,
+        tax_total=None,
+        total=None,
+    )
+
+
 def _fake_extractor(parsed: Invoice, raw: AIMessage | None = None) -> tuple[
     InvoiceExtractor, FakeStructuredLLM
 ]:
@@ -186,8 +199,7 @@ def test_extract_invoice_function_returns_only_required_fields() -> None:
 
 
 def test_non_invoice_has_null_fields_and_no_line_items() -> None:
-    invoice = Invoice(is_invoice=False)
-    extractor, _ = _fake_extractor(invoice)
+    extractor, _ = _fake_extractor(_non_invoice())
 
     result = extractor.extract("Bank statement for account 12345.")
 
@@ -202,6 +214,55 @@ def test_non_invoice_has_null_fields_and_no_line_items() -> None:
         "tax_total": None,
         "total": None,
     }
+
+
+def test_json_string_response_is_parsed_and_validated() -> None:
+    llm = FakeStructuredLLM(
+        {
+            "raw": AIMessage(content=""),
+            "parsed": _invoice().model_dump_json(),
+            "parsing_error": None,
+        }
+    )
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    result = extractor.extract("Invoice text")
+
+    assert result.invoice == _invoice()
+
+
+def test_invalid_schema_fields_raise_response_error() -> None:
+    invalid = _invoice().model_dump(mode="json")
+    invalid["tax_total"] = "180.00"
+    llm = FakeStructuredLLM(
+        {"raw": AIMessage(content=""), "parsed": invalid, "parsing_error": None}
+    )
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    with pytest.raises(LLMResponseError):
+        extractor.extract("Invoice text")
+
+
+def test_non_invoice_with_populated_fields_raises_response_error() -> None:
+    invalid = _non_invoice().model_dump(mode="json")
+    invalid["vendor"] = "Acme"
+    llm = FakeStructuredLLM(
+        {"raw": AIMessage(content=""), "parsed": invalid, "parsing_error": None}
+    )
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    with pytest.raises(LLMResponseError):
+        extractor.extract("Bank statement text")
+
+
+def test_malformed_json_string_raises_response_error() -> None:
+    llm = FakeStructuredLLM(
+        {"raw": AIMessage(content=""), "parsed": "{not json", "parsing_error": None}
+    )
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    with pytest.raises(LLMResponseError):
+        extractor.extract("Invoice text")
 
 
 def test_extract_falls_back_to_response_metadata_for_usage() -> None:

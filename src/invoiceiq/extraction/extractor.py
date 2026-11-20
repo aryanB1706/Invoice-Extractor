@@ -4,9 +4,11 @@ This module owns all LLM access. It receives plain document text and does not
 import or depend on the document-processing layer.
 """
 
+import json
 from typing import Any
 
 import groq
+from langchain_core.exceptions import OutputParserException
 from langchain_groq import ChatGroq
 from pydantic import ValidationError
 
@@ -92,6 +94,10 @@ class InvoiceExtractor:
             raise LLMAPIError(f"Groq API error ({exc.status_code}): {exc.message}") from exc
         except groq.APIError as exc:
             raise LLMAPIError(f"Groq API error: {exc}") from exc
+        except ValidationError as exc:
+            raise LLMResponseError(_format_validation_error(exc)) from exc
+        except OutputParserException as exc:
+            raise LLMResponseError(f"Could not parse the model response: {exc}") from exc
         except TimeoutError as exc:
             raise LLMTimeoutError("The Groq request timed out. Try again.") from exc
 
@@ -99,30 +105,47 @@ class InvoiceExtractor:
 def _parse_result(result: Any) -> tuple[Invoice, Any | None]:
     raw_message: Any | None = None
     parsing_error: Any | None = None
+    parsed = result
 
-    if isinstance(result, Invoice):
-        return result, None
-
-    if isinstance(result, dict):
+    if isinstance(result, dict) and ("parsed" in result or "parsing_error" in result):
         parsed = result.get("parsed")
         raw_message = result.get("raw")
         parsing_error = result.get("parsing_error")
-    else:
-        parsed = result
 
     if parsing_error is not None:
-        raise LLMResponseError(f"Could not parse the model response: {parsing_error}")
+        cause = parsing_error if isinstance(parsing_error, BaseException) else None
+        raise LLMResponseError(
+            f"Could not parse the model response: {parsing_error}"
+        ) from cause
 
+    return _coerce_invoice(parsed), raw_message
+
+
+def _coerce_invoice(parsed: Any) -> Invoice:
     if isinstance(parsed, Invoice):
-        return parsed, raw_message
+        return parsed
+
+    if isinstance(parsed, str):
+        try:
+            parsed = json.loads(parsed)
+        except json.JSONDecodeError as exc:
+            raise LLMResponseError(f"Model response is not valid JSON: {exc}") from exc
 
     if isinstance(parsed, dict):
         try:
-            return Invoice.model_validate(parsed), raw_message
+            return Invoice.model_validate(parsed)
         except ValidationError as exc:
-            raise LLMResponseError(f"Invalid invoice response: {exc}") from exc
+            raise LLMResponseError(_format_validation_error(exc)) from exc
 
     raise LLMResponseError("The model did not return a valid invoice response.")
+
+
+def _format_validation_error(exc: ValidationError) -> str:
+    details = []
+    for error in exc.errors():
+        location = ".".join(str(part) for part in error["loc"]) or "<root>"
+        details.append(f"{location}: {error['msg']}")
+    return "Invalid invoice response: " + "; ".join(details)
 
 
 def _extract_usage(message: Any | None) -> TokenUsage | None:

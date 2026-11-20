@@ -1,22 +1,26 @@
 """Shared Pydantic models used across the pipeline."""
 
-from datetime import date
+from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+STRICT_SCHEMA = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False)
 
 
 class LineItem(BaseModel):
     """A single line on an invoice."""
 
-    description: str | None = None
-    quantity: float | None = None
-    amount: float | None = None
+    model_config = STRICT_SCHEMA
+
+    description: str | None
+    quantity: float | None
+    amount: float | None
 
 
 class Invoice(BaseModel):
     """Invoice output matching the assignment's required JSON schema."""
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = STRICT_SCHEMA
 
     is_invoice: bool = Field(
         description=(
@@ -24,16 +28,61 @@ class Invoice(BaseModel):
             "purchase orders, cover letters, and other documents."
         )
     )
-    vendor: str | None = None
-    invoice_number: str | None = None
-    invoice_date: date | None = None
-    currency: str | None = None
+    vendor: str | None
+    invoice_number: str | None
+    invoice_date: date | None
+    currency: str | None
     line_items: list[LineItem] | None = Field(
-        default=None,
-        description="All invoice line items. Null for non-invoices or when absent.",
+        description="All invoice line items. Null for non-invoices or when absent."
     )
-    tax_total: float | None = None
-    total: float | None = None
+    tax_total: float | None
+    total: float | None
+
+    @field_validator("invoice_date", mode="before")
+    @classmethod
+    def validate_invoice_date(cls, value: object) -> object:
+        """Require dates in exactly YYYY-MM-DD format."""
+        if value is None:
+            return None
+        if isinstance(value, datetime):
+            raise ValueError("invoice_date must use YYYY-MM-DD format without a time")
+        if isinstance(value, date):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = date.fromisoformat(value)
+            except ValueError as exc:
+                raise ValueError("invoice_date must use YYYY-MM-DD format") from exc
+            if parsed.isoformat() != value:
+                raise ValueError("invoice_date must use YYYY-MM-DD format")
+            return parsed
+        raise ValueError("invoice_date must be a YYYY-MM-DD string")
+
+    @model_validator(mode="after")
+    def validate_non_invoice_fields(self) -> "Invoice":
+        """Require every non-invoice field except is_invoice to be null."""
+        if self.is_invoice:
+            return self
+
+        populated = [
+            field_name
+            for field_name in (
+                "vendor",
+                "invoice_number",
+                "invoice_date",
+                "currency",
+                "line_items",
+                "tax_total",
+                "total",
+            )
+            if getattr(self, field_name) is not None
+        ]
+        if populated:
+            raise ValueError(
+                "Non-invoice documents must have null values for: "
+                + ", ".join(populated)
+            )
+        return self
 
 
 class PageText(BaseModel):

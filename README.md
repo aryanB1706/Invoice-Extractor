@@ -44,6 +44,14 @@ For non-invoice documents, `is_invoice` is `false` and every other field is
 `null`, including `line_items`. Token usage and model metadata are available
 separately through `InvoiceExtractor.extract()`.
 
+### Validation layers
+
+- **Schema validation** (`schemas.py`): strict field types, required keys,
+  `YYYY-MM-DD` dates, finite numbers, no extra keys, and null-only non-invoices.
+- **Mathematical validation** (`validation/validator.py`): required business
+  fields and line-item/tax totals. This is intentionally separate from schema
+  validation and runs in the next stage.
+
 ```python
 from invoiceiq.extraction import extract_invoice
 
@@ -183,12 +191,13 @@ Implemented:
 - LangChain `ChatGroq` client configured entirely from environment variables
 - Strict invoice prompt with line-item, date, and non-invoice rules
 - Reusable `extract_invoice(document_text)` function returning the exact JSON schema
+- Strict Pydantic schema validation for required keys, types, dates, and non-invoices
 - Structured invoice extraction with token-usage capture
 - Domain errors for rate limits, timeouts, authentication, API failures, and parsing
 - Validation for required fields and line-item/tax totals
 - FastAPI health endpoint
 - CLI document loader
-- Tests for digital PDFs, scanned PDFs, images, prompts, extraction, and failures
+- Tests for digital PDFs, scanned PDFs, images, prompts, extraction, schemas, and failures
 
 Reserved for the next prompts:
 
