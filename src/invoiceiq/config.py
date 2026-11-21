@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     ocr_language: str = "eng"
     ocr_min_text_chars: int = 50
     ocr_render_dpi: int = 200
+    ocr_auto_rotate: bool = True
 
     max_upload_mb: int = Field(default=10, ge=1)
     invoice_amount_tolerance: float = Field(default=0.01, ge=0, allow_inf_nan=False)

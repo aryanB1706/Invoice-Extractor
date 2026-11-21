@@ -2,13 +2,14 @@
 
 Digital PDFs are read directly with PyMuPDF. Pages with little or no text are
 rendered to images and passed through Tesseract OCR. Images are always handled
-by OCR. The pipeline never sends text to an LLM.
+by OCR. The resulting page text is handed to the extraction layer.
 """
 
+from io import BytesIO
 from pathlib import Path
 
 import pymupdf
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from invoiceiq.config import get_settings
 from invoiceiq.document_processing.ocr import OCRError, image_to_text
@@ -39,6 +40,56 @@ def load_document(path: str | Path) -> list[PageText]:
     return [_load_image(document_path)]
 
 
+def load_document_bytes(content: bytes, extension: str) -> list[PageText]:
+    """Load text from in-memory PDF or image content."""
+    normalized_extension = extension.lower()
+    if normalized_extension not in SUPPORTED_EXTENSIONS:
+        raise ValueError(f"Unsupported file type '{extension}'.")
+    if not content:
+        raise DocumentProcessingError("Document content is empty.")
+
+    if normalized_extension == PDF_EXTENSION:
+        try:
+            document = pymupdf.open(stream=content, filetype="pdf")
+        except (
+            pymupdf.FileDataError,
+            pymupdf.EmptyFileError,
+            OSError,
+            RuntimeError,
+            ValueError,
+        ) as exc:
+            raise DocumentProcessingError(f"Could not open PDF: {exc}") from exc
+        return _process_pdf_document(document)
+
+    try:
+        with Image.open(BytesIO(content)) as image:
+            text = _clean_text(image_to_text(image))
+    except (
+        Image.DecompressionBombError,
+        OCRError,
+        OSError,
+        RuntimeError,
+        UnidentifiedImageError,
+        ValueError,
+    ) as exc:
+        return [
+            PageText(
+                page_number=1,
+                text="",
+                used_ocr=True,
+                error=f"Could not read image: {exc}",
+            )
+        ]
+    return [
+        PageText(
+            page_number=1,
+            text=text,
+            used_ocr=True,
+            error=None if text else "No readable text found in image.",
+        )
+    ]
+
+
 def _load_pdf(path: Path) -> list[PageText]:
     try:
         document = pymupdf.open(path)
@@ -51,9 +102,15 @@ def _load_pdf(path: Path) -> list[PageText]:
     ) as exc:
         raise DocumentProcessingError(f"Could not open PDF '{path.name}': {exc}") from exc
 
+    return _process_pdf_document(document, path.name)
+
+
+def _process_pdf_document(
+    document: pymupdf.Document, filename: str = "document.pdf"
+) -> list[PageText]:
     with document:
         if document.needs_pass:
-            raise DocumentProcessingError(f"PDF '{path.name}' is password protected.")
+            raise DocumentProcessingError(f"PDF '{filename}' is password protected.")
 
         return [
             _process_pdf_page(page, page_number)

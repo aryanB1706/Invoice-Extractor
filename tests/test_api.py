@@ -1,12 +1,18 @@
 """API smoke tests."""
 
 from datetime import date
+from io import BytesIO
 
+import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from invoiceiq.api import routes, service
 from invoiceiq.api.app import app
+from invoiceiq.api.service import UnreadableDocumentError
 from invoiceiq.config import Settings
+from invoiceiq.document_processing.loader import DocumentProcessingError
+from invoiceiq.extraction import LLMConfigurationError, LLMError, LLMTimeoutError
 from invoiceiq.schemas import (
     ExtractionResponse,
     ExtractionResult,
@@ -43,7 +49,11 @@ def _valid_response() -> ExtractionResponse:
 
 
 def test_extract_endpoint_returns_validated_invoice(monkeypatch) -> None:
-    monkeypatch.setattr(routes, "process_document", lambda path: _valid_response())
+    monkeypatch.setattr(
+        routes,
+        "process_document_bytes",
+        lambda content, extension: _valid_response(),
+    )
 
     response = client.post(
         "/extract",
@@ -57,7 +67,11 @@ def test_extract_endpoint_returns_validated_invoice(monkeypatch) -> None:
 
 
 def test_versioned_extract_route_remains_available(monkeypatch) -> None:
-    monkeypatch.setattr(routes, "process_document", lambda path: _valid_response())
+    monkeypatch.setattr(
+        routes,
+        "process_document_bytes",
+        lambda content, extension: _valid_response(),
+    )
 
     response = client.post(
         "/api/v1/extract",
@@ -70,10 +84,89 @@ def test_versioned_extract_route_remains_available(monkeypatch) -> None:
 def test_extract_rejects_unsupported_file_type() -> None:
     response = client.post(
         "/extract",
-        files={"file": ("invoice.tiff", b"data", "image/tiff")},
+        files={"file": ("invoice.txt", b"data", "text/plain")},
     )
 
     assert response.status_code == 415
+
+
+def test_extract_rejects_oversized_file(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routes,
+        "get_settings",
+        lambda: Settings(_env_file=None, max_upload_mb=1),
+    )
+
+    response = client.post(
+        "/extract",
+        files={"file": ("invoice.pdf", b"%PDF-" + b"0" * (1024 * 1024), "application/pdf")},
+    )
+
+    assert response.status_code == 413
+
+
+def test_extract_rejects_extension_content_mismatch() -> None:
+    output = BytesIO()
+    Image.new("RGB", (20, 20), "white").save(output, format="JPEG")
+
+    response = client.post(
+        "/extract",
+        files={"file": ("invoice.png", output.getvalue(), "image/png")},
+    )
+
+    assert response.status_code == 422
+
+
+def test_extract_rejects_unreadable_image() -> None:
+    response = client.post(
+        "/extract",
+        files={"file": ("invoice.png", b"not an image", "image/png")},
+    )
+
+    assert response.status_code == 422
+
+
+def test_extract_accepts_tiff(monkeypatch) -> None:
+    monkeypatch.setattr(
+        routes,
+        "process_document_bytes",
+        lambda content, extension: _valid_response(),
+    )
+    output = BytesIO()
+    Image.new("RGB", (20, 20), "white").save(output, format="TIFF")
+
+    response = client.post(
+        "/extract",
+        files={"file": ("invoice.tiff", output.getvalue(), "image/tiff")},
+    )
+
+    assert response.status_code == 200
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code"),
+    [
+        (LLMConfigurationError("Groq is not configured"), 503),
+        (LLMTimeoutError("Groq timed out"), 504),
+        (LLMError("Groq failed"), 502),
+        (UnreadableDocumentError("No readable text"), 422),
+        (DocumentProcessingError("Could not open PDF"), 422),
+    ],
+)
+def test_extract_maps_pipeline_errors(
+    monkeypatch, error: Exception, status_code: int
+) -> None:
+    def raise_error(content: bytes, extension: str) -> ExtractionResponse:
+        raise error
+
+    monkeypatch.setattr(routes, "process_document_bytes", raise_error)
+
+    response = client.post(
+        "/extract",
+        files={"file": ("invoice.pdf", b"%PDF-1.4 test", "application/pdf")},
+    )
+
+    assert response.status_code == status_code
 
 
 def test_extract_rejects_invalid_pdf() -> None:

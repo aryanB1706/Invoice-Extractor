@@ -12,7 +12,10 @@ from pydantic import SecretStr
 from invoiceiq.config import Settings
 from invoiceiq.extraction import (
     InvoiceExtractor,
+    LLMAPIError,
+    LLMAuthenticationError,
     LLMConfigurationError,
+    LLMConnectionError,
     LLMRateLimitError,
     LLMResponseError,
     LLMTimeoutError,
@@ -127,6 +130,23 @@ def _rate_limit_error() -> groq.RateLimitError:
 def _timeout_error() -> groq.APITimeoutError:
     request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
     return groq.APITimeoutError(request=request)
+
+
+def _authentication_error() -> groq.AuthenticationError:
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(401, request=request)
+    return groq.AuthenticationError("invalid api key", response=response, body=None)
+
+
+def _connection_error() -> groq.APIConnectionError:
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    return groq.APIConnectionError(request=request)
+
+
+def _api_status_error() -> groq.APIStatusError:
+    request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+    response = httpx.Response(500, request=request)
+    return groq.APIStatusError("server error", response=response, body=None)
 
 
 def test_build_llm_requires_configuration() -> None:
@@ -321,3 +341,37 @@ def test_empty_text_is_rejected() -> None:
 
     with pytest.raises(ValueError):
         extractor.extract("   ")
+
+
+def test_authentication_error_is_mapped_to_domain_error() -> None:
+    llm = FakeStructuredLLM(error=_authentication_error())
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    with pytest.raises(LLMAuthenticationError):
+        extractor.extract("Invoice text")
+
+
+def test_connection_error_is_mapped_to_domain_error() -> None:
+    llm = FakeStructuredLLM(error=_connection_error())
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    with pytest.raises(LLMConnectionError):
+        extractor.extract("Invoice text")
+
+
+def test_api_status_error_is_mapped_to_domain_error() -> None:
+    llm = FakeStructuredLLM(error=_api_status_error())
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    with pytest.raises(LLMAPIError):
+        extractor.extract("Invoice text")
+
+
+def test_non_object_response_raises_response_error() -> None:
+    llm = FakeStructuredLLM(
+        {"raw": AIMessage(content=""), "parsed": 42, "parsing_error": None}
+    )
+    extractor = InvoiceExtractor(llm=llm, settings=_settings())
+
+    with pytest.raises(LLMResponseError):
+        extractor.extract("Invoice text")

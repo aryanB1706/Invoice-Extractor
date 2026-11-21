@@ -40,6 +40,10 @@ build-backend = "uv_build"
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+    "live: requires a live Groq API call (set INVOICEIQ_LIVE_TESTS=1)",
+    "dataset: uses the downloaded assignment pack (set INVOICEIQ_DATASET_TESTS=1)",
+]
 
 [tool.ruff]
 line-length = 100

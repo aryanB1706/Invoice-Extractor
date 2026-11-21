@@ -2,6 +2,8 @@
 
 from datetime import date
 
+import pytest
+
 from invoiceiq.schemas import Invoice, LineItem
 from invoiceiq.validation import validate_invoice
 
@@ -85,3 +87,58 @@ def test_validation_tolerance_is_configurable() -> None:
 
     assert validate_invoice(invoice, tolerance=0.1).is_valid is True
     assert validate_invoice(invoice, tolerance=0.01).is_valid is False
+
+
+def test_missing_vendor_is_reported() -> None:
+    report = validate_invoice(_invoice(vendor=None))
+
+    assert report.is_valid is False
+    assert any(issue.field == "vendor" for issue in report.issues)
+
+
+def test_missing_invoice_number_is_reported() -> None:
+    report = validate_invoice(_invoice(invoice_number=None))
+
+    assert report.is_valid is False
+    assert any(issue.field == "invoice_number" for issue in report.issues)
+
+
+def test_missing_invoice_date_is_reported() -> None:
+    report = validate_invoice(_invoice(invoice_date=None))
+
+    assert report.is_valid is False
+    assert any(issue.field == "invoice_date" for issue in report.issues)
+
+
+def test_negative_total_is_reported() -> None:
+    report = validate_invoice(_invoice(total=-1.0))
+
+    assert report.is_valid is False
+    assert any(issue.field == "total" for issue in report.issues)
+
+
+def test_missing_line_items_is_reported() -> None:
+    report = validate_invoice(_invoice(line_items=None))
+
+    assert report.is_valid is False
+    assert any(issue.field == "line_items" for issue in report.issues)
+
+
+def test_line_item_without_amount_is_reported() -> None:
+    report = validate_invoice(
+        _invoice(line_items=[LineItem(description="Widget", quantity=1, amount=None)])
+    )
+
+    assert report.is_valid is False
+    assert any(issue.field == "line_items" for issue in report.issues)
+
+
+def test_negative_tolerance_is_rejected() -> None:
+    with pytest.raises(ValueError):
+        validate_invoice(_invoice(), tolerance=-0.01)
+
+
+@pytest.mark.parametrize("tolerance", [float("nan"), float("inf"), float("-inf")])
+def test_non_finite_tolerance_is_rejected(tolerance: float) -> None:
+    with pytest.raises(ValueError):
+        validate_invoice(_invoice(), tolerance=tolerance)

@@ -166,8 +166,8 @@ uv run uvicorn invoiceiq.api.app:app --reload
 
 Open `http://127.0.0.1:8000/docs` for the generated API documentation.
 
-`POST /extract` accepts a PDF, JPG, JPEG, or PNG file and returns the invoice,
-validation report, and a `needs_review` flag. The versioned alias
+`POST /extract` accepts a PDF, JPG, JPEG, PNG, TIFF, or BMP file and returns the
+invoice, validation report, and a `needs_review` flag. The versioned alias
 `POST /api/v1/extract` is also available. `GET /health` checks API availability.
 
 ### 5. Run the CLI
@@ -183,6 +183,25 @@ uv run pytest
 uv run ruff check .
 ```
 
+The default suite is offline: document processing, OCR, LLM calls, and the API
+are exercised with local fakes, so no `GROQ_API_KEY` or network is required.
+
+Optional checks over the downloaded assignment pack:
+
+```powershell
+# Requires data/samples/assignment with the 20 documents
+$env:INVOICEIQ_DATASET_TESTS = "1"
+uv run pytest -m dataset
+
+# Real Groq call; checks wiring only, not accuracy
+$env:INVOICEIQ_LIVE_TESTS = "1"
+uv run pytest -m live
+```
+
+Dataset and live tests are skipped by default. The assignment pack lives under
+`data/samples/assignment/` and is ignored by Git. No accuracy numbers are
+asserted in the test suite; measure accuracy separately on the labelled set.
+
 ## Status
 
 Implemented:
@@ -191,6 +210,7 @@ Implemented:
 - Shared Pydantic schemas
 - Digital PDF text extraction with PyMuPDF
 - Per-page OCR fallback for scanned or low-text PDF pages
+- Automatic rotation recovery for upside-down or rotated scans
 - JPG, JPEG, PNG, TIFF, and BMP OCR support
 - Graceful handling of blank pages, unreadable images, and corrupt PDFs
 - LangChain `ChatGroq` client configured entirely from environment variables
@@ -204,7 +224,11 @@ Implemented:
 - PDF and image upload extraction endpoint with upload checks and HTTP errors
 - Mathematical validation with configurable tolerance and review flags
 - CLI document loader
-- Tests for digital PDFs, scanned PDFs, images, prompts, extraction, schemas, and failures
+- In-memory upload processing without temporary files
+- End-to-end integration tests for digital PDFs, scans, images, multi-page
+  documents, non-invoices, missing fields, unreadable files, corrupt PDFs, and
+  Groq failures
+- Optional dataset and live-API test markers
 
 Reserved for the next prompts:
 

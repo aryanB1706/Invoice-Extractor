@@ -1,13 +1,19 @@
 """Document loader and OCR tests."""
 
+from io import BytesIO
 from pathlib import Path
 
 import pymupdf
 import pytest
 from PIL import Image
 
-from invoiceiq.document_processing import loader
-from invoiceiq.document_processing.loader import DocumentProcessingError, load_document
+from invoiceiq.config import Settings
+from invoiceiq.document_processing import loader, ocr
+from invoiceiq.document_processing.loader import (
+    DocumentProcessingError,
+    load_document,
+    load_document_bytes,
+)
 from invoiceiq.document_processing.ocr import OCRError, image_to_text
 
 DIGITAL_TEXT = (
@@ -187,3 +193,126 @@ def test_image_to_text_uses_pytesseract(
     )
 
     assert image_to_text(path) == "recognized with eng"
+
+
+def test_auto_rotation_recovers_upside_down_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[int, int]] = []
+
+    def fake_ocr(image: Image.Image, lang: str | None = None) -> str:
+        calls.append(image.size)
+        if len(calls) == 3:
+            return "Lakeside Printing Co INVOICE Total 100.00 Tax 18.00"
+        return "ZE60T-d7 | 03 Sunuud apisere7  \ufffdssauisng sno{ 40} Nok xUeUL"
+
+    monkeypatch.setattr(ocr.pytesseract, "image_to_string", fake_ocr)
+
+    text = image_to_text(Image.new("RGB", (200, 100), "white"))
+
+    assert "Lakeside Printing Co INVOICE" in text
+    assert len(calls) == 4
+
+
+def test_auto_rotation_skips_readable_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    def fake_ocr(image: Image.Image, lang: str | None = None) -> str:
+        calls.append(1)
+        return "Invoice INV-1 Total 118.00 Tax 18.00 Date 2026-01-01"
+
+    monkeypatch.setattr(ocr.pytesseract, "image_to_string", fake_ocr)
+
+    text = image_to_text(Image.new("RGB", (200, 100), "white"))
+
+    assert "Invoice INV-1" in text
+    assert len(calls) == 1
+
+
+def test_auto_rotation_can_be_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[int] = []
+
+    def fake_ocr(image: Image.Image, lang: str | None = None) -> str:
+        calls.append(1)
+        return "ZE60T-d7 | 03 Sunuud"
+
+    monkeypatch.setattr(ocr.pytesseract, "image_to_string", fake_ocr)
+    monkeypatch.setattr(
+        ocr,
+        "get_settings",
+        lambda: Settings(_env_file=None, ocr_auto_rotate=False),
+    )
+
+    text = image_to_text(Image.new("RGB", (200, 100), "white"))
+
+    assert text == "ZE60T-d7 | 03 Sunuud"
+    assert len(calls) == 1
+
+
+def test_rotation_metrics_reward_readable_text() -> None:
+    readable_score, readable_keywords = ocr._rotation_metrics(
+        "Invoice total tax amount 100.00"
+    )
+    garbled_score, garbled_keywords = ocr._rotation_metrics("ZE60T-d7 | 03 Sunuud")
+
+    assert readable_score > garbled_score
+    assert readable_keywords > garbled_keywords
+
+
+def test_load_document_bytes_reads_pdf() -> None:
+    pages = load_document_bytes(_pdf_bytes([DIGITAL_TEXT]), ".pdf")
+
+    assert len(pages) == 1
+    assert "INV-001" in pages[0].text
+    assert pages[0].used_ocr is False
+
+
+def test_load_document_bytes_reads_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    output = BytesIO()
+    Image.new("RGB", (100, 50), "white").save(output, format="PNG")
+    monkeypatch.setattr(loader, "image_to_text", lambda image: "Image invoice text")
+
+    pages = load_document_bytes(output.getvalue(), ".png")
+
+    assert pages[0].text == "Image invoice text"
+    assert pages[0].used_ocr is True
+    assert pages[0].error is None
+
+
+def test_load_document_bytes_rejects_unsupported_extension() -> None:
+    with pytest.raises(ValueError):
+        load_document_bytes(b"data", ".txt")
+
+
+def test_load_document_bytes_rejects_empty_content() -> None:
+    with pytest.raises(DocumentProcessingError):
+        load_document_bytes(b"", ".pdf")
+
+
+def test_load_document_bytes_rejects_corrupt_pdf() -> None:
+    with pytest.raises(DocumentProcessingError):
+        load_document_bytes(b"%PDF-1.4 this file is broken", ".pdf")
+
+
+def test_load_document_bytes_reports_unreadable_image() -> None:
+    pages = load_document_bytes(b"not an image", ".png")
+
+    assert pages[0].text == ""
+    assert pages[0].used_ocr is True
+    assert pages[0].error is not None
+
+
+def _pdf_bytes(page_texts: list[str]) -> bytes:
+    document = pymupdf.open()
+    for text in page_texts:
+        page = document.new_page()
+        if text:
+            page.insert_text((72, 72), text)
+    output = BytesIO()
+    document.save(output)
+    document.close()
+    return output.getvalue()

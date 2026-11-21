@@ -2,14 +2,13 @@
 
 from io import BytesIO
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from PIL import Image, UnidentifiedImageError
 
-from invoiceiq.api.service import UnreadableDocumentError, process_document
+from invoiceiq.api.service import UnreadableDocumentError, process_document_bytes
 from invoiceiq.config import get_settings
 from invoiceiq.document_processing.loader import DocumentProcessingError
 from invoiceiq.extraction import (
@@ -19,8 +18,15 @@ from invoiceiq.extraction import (
 )
 from invoiceiq.schemas import ExtractionResponse
 
-ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
-IMAGE_FORMATS = {".jpg": "JPEG", ".jpeg": "JPEG", ".png": "PNG"}
+ALLOWED_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+IMAGE_FORMATS = {
+    ".jpg": "JPEG",
+    ".jpeg": "JPEG",
+    ".png": "PNG",
+    ".tif": "TIFF",
+    ".tiff": "TIFF",
+    ".bmp": "BMP",
+}
 router = APIRouter(tags=["invoices"])
 
 
@@ -31,7 +37,9 @@ async def extract_invoice(file: Annotated[UploadFile, File()]) -> ExtractionResp
     if extension not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=415,
-            detail="Unsupported file type. Upload a PDF, JPG, JPEG, or PNG file.",
+            detail=(
+                "Unsupported file type. Upload a PDF, JPG, JPEG, PNG, TIFF, or BMP file."
+            ),
         )
 
     max_bytes = get_settings().max_upload_mb * 1024 * 1024
@@ -46,10 +54,7 @@ async def extract_invoice(file: Annotated[UploadFile, File()]) -> ExtractionResp
     _validate_file_content(content, extension)
 
     try:
-        with TemporaryDirectory() as temporary_directory:
-            path = Path(temporary_directory) / f"upload{extension}"
-            path.write_bytes(content)
-            return await run_in_threadpool(process_document, path)
+        return await run_in_threadpool(process_document_bytes, content, extension)
     except UnreadableDocumentError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except DocumentProcessingError as exc:
