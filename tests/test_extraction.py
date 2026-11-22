@@ -210,6 +210,25 @@ def test_extract_returns_invoice_and_token_usage() -> None:
     assert "Acme Corporation" in str(llm.received_messages[1].content)
 
 
+def test_extract_captures_cached_input_token_metadata() -> None:
+    raw = AIMessage(
+        content="",
+        usage_metadata={
+            "input_tokens": 100,
+            "output_tokens": 20,
+            "total_tokens": 120,
+            "input_token_details": {"cache_read": 25},
+        },
+    )
+    extractor, _ = _fake_extractor(_invoice(), raw)
+
+    result = extractor.extract("Invoice text")
+
+    assert result.usage is not None
+    assert result.usage.prompt_tokens == 100
+    assert result.usage.cached_prompt_tokens == 25
+
+
 def test_extract_invoice_function_returns_only_required_fields() -> None:
     extractor, _ = _fake_extractor(_invoice())
 

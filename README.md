@@ -5,7 +5,7 @@ PyMuPDF, Tesseract OCR, Pydantic, Pandas, and Pytest.
 
 The application processes uploaded invoices through document processing, LLM
 extraction, schema validation, and mathematical business validation. Dataset
-evaluation is available for the labelled assignment sample pack.
+evaluation and a 20-document assignment batch report are available.
 
 ## Architecture
 
@@ -69,11 +69,13 @@ InvoiceIQ/
 ├── pyproject.toml               # Package metadata, dependencies, tool config
 ├── requirements.txt             # Runtime and development dependencies
 ├── README.md                    # Project overview and setup
+├── REPORT.md                    # Generated accuracy, failures, and cost report
 ├── evaluation/                  # Source-checkout command launchers
 ├── data/
-│   ├── samples/assignment/      # Labelled documents and same-stem Ground Truth JSON
+│   ├── samples/assignment/      # 10 labelled + 10 unlabelled provided documents
 │   ├── expected/                # Reserved placeholder; not used by the assignment eval
 │   └── outputs/evaluation/      # Predictions, metrics, and failure analysis
+├── outputs/                     # Ignored: per-document batch JSON and cost results
 ├── src/invoiceiq/
 │   ├── __init__.py              # Package version and CLI entry point
 │   ├── config.py                # Environment-based settings (API key, model, OCR)
@@ -91,13 +93,14 @@ InvoiceIQ/
 │   ├── api/                     # FastAPI application
 │   │   ├── app.py               # App factory and health endpoint
 │   │   └── routes.py            # Upload/extract endpoint
-│   └── evaluation/              # Accuracy and failure analysis
-│       ├── failure_analysis.py  # Error categories and human-review effectiveness
-│       ├── metrics.py           # Per-field comparison
-│       ├── models.py            # Evaluation result/report models
-│       ├── report.py            # Console and Markdown reports
-│       ├── run_eval.py          # Evaluation CLI
-│       └── runner.py            # Dataset-level aggregation and output
+│   ├── evaluation/              # Accuracy and failure analysis
+│   │   ├── failure_analysis.py  # Error categories and human-review effectiveness
+│   │   ├── metrics.py           # Per-field comparison
+│   │   ├── models.py            # Evaluation result/report models
+│   │   ├── report.py            # Console and Markdown reports
+│   │   ├── run_eval.py          # Evaluation CLI
+│   │   └── runner.py            # Dataset-level aggregation and output
+│   └── batch.py                 # 20-document batch and cost/report generation
 └── tests/                       # Pytest suite for config, schemas, API, and loading
 ```
 
@@ -151,9 +154,10 @@ pip install -r requirements.txt
 Copy-Item .env.example .env
 ```
 
-Then set `GROQ_API_KEY` in `.env`. `GROQ_MODEL` is already provided and can be
-changed without modifying code. Use a Groq text model that supports tool calling
-and structured output; `llama-3.3-70b-versatile` is the default recommendation.
+Then set `GROQ_API_KEY` in `.env`. The configured `GROQ_MODEL` is
+`openai/gpt-oss-120b`; it supports the structured extraction flow. If you change
+it, also update `GROQ_PRICING_MODEL`, the applicable rates, and pricing source
+before running cost analysis.
 If Tesseract is not on `PATH`, set `TESSERACT_CMD` to the full executable path.
 
 Generation settings are configurable with `GROQ_TEMPERATURE`,
@@ -176,6 +180,16 @@ Open `http://127.0.0.1:8000/docs` for the generated API documentation.
 `POST /extract` accepts a PDF, JPG, JPEG, PNG, TIFF, or BMP file and returns the
 invoice, validation report, and a `needs_review` flag. The versioned alias
 `POST /api/v1/extract` is also available. `GET /health` checks API availability.
+
+Example request from PowerShell (replace the sample path):
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/extract" `
+  -F "file=@C:\path\to\invoice.pdf"
+```
+
+The JSON response includes `invoice`, `validation`, `needs_review`, warnings,
+model information, and token usage when returned by Groq.
 
 ### 5. Run the CLI
 
@@ -260,7 +274,46 @@ that revision, any new accuracy run on the same 10 documents is a post-analysis
 diagnostic, not an independent holdout score. The evaluation command itself
 does not tune the model.
 
-### 8. Analyze saved evaluation failures
+### 8. Process all 20 assignment documents and generate the final report
+
+With the assignment pack installed at
+`data/samples/assignment/{labelled,unlabelled}/` and Groq settings in `.env`, run:
+
+```powershell
+python -m evaluation.run_all
+```
+
+The command requires exactly 10 labelled documents paired with their actual,
+same-stem Ground Truth JSON files and 10 unlabelled documents. It runs the
+normal extraction pipeline once per source. It does not create labels for
+unlabelled documents. Failed documents still receive an explicit JSON error
+record, and the command exits nonzero if any extraction failed. Optional
+`--data-dir` and `--output-dir` arguments override the source and output paths.
+The installed `invoiceiq-batch` command is also available.
+
+The run writes `outputs/L01.json` through `outputs/U10.json`, plus
+`outputs/batch_summary.json`, `outputs/cost_analysis.json`, and an
+`outputs/evaluation/` directory. Each per-document JSON retains the source path,
+split, extraction and validation results, review status, quality signals, token
+usage, and any error. The labelled evaluation reuses these saved predictions,
+so accuracy does not trigger a second set of model calls. The root
+`REPORT.md` is regenerated with the run's actual field-level accuracy, matching
+rules, failure examples, priorities, and cost analysis.
+
+Cost uses returned prompt/completion token counts and configured per-million
+token rates. The `.env.example` rates are Groq's published USD prices for
+`openai/gpt-oss-120b`, using the source URL and checked date in the environment
+template; update the model, rates, source URL, and date together if pricing
+changes. Cached-input pricing is applied only to cached tokens explicitly
+reported by the provider; if the cached count is unavailable, input tokens use
+the standard rate. Missing input/output usage is never assumed to be zero: the
+affected estimate is excluded and total cost is marked unknown if usage is
+incomplete for any document. The report shows the published-price equivalent,
+not an account invoice. This run used a Groq free-tier API key; usage within the
+free quota is expected to cost $0, but the inference API does not expose account
+billing to verify the actual charge.
+
+### 9. Analyze saved evaluation failures
 
 To analyze the Prompt 8 results already on disk without making additional LLM
 calls, run:
@@ -318,6 +371,6 @@ Implemented:
   Groq failures
 - Optional dataset and live-API test markers
 
-Reserved for the next prompts:
-
-- Upload persistence
+Generated batch outputs and downloaded assignment documents are ignored by
+Git. `REPORT.md` is a generated, tracked deliverable and should be refreshed
+after the final batch run.

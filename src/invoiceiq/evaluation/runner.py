@@ -108,7 +108,10 @@ def discover_labelled_documents(directory: str | Path) -> list[LabelledDocument]
 def run_evaluation(
     documents: list[LabelledDocument],
     *,
-    process: Callable[[Path], ExtractionResponse] | None = None,
+    process: Callable[
+        [Path], ExtractionResponse | tuple[ExtractionResponse, DocumentQuality]
+    ]
+    | None = None,
     tolerance: float = 0.01,
     progress: Callable[[int, int, LabelledDocument], None] | None = None,
 ) -> list[DocumentEvaluation]:
@@ -134,7 +137,11 @@ def run_evaluation(
                     on_pages_loaded=capture_quality,
                 )
             else:
-                response = process(item.document)
+                processed = process(item.document)
+                if isinstance(processed, tuple):
+                    response, document_quality = processed
+                else:
+                    response = processed
         except Exception as exc:  # noqa: BLE001 - record any pipeline failure
             results.append(
                 DocumentEvaluation(
@@ -253,7 +260,10 @@ def build_report(
 def evaluate_dataset(
     documents: list[LabelledDocument],
     *,
-    process: Callable[[Path], ExtractionResponse] | None = None,
+    process: Callable[
+        [Path], ExtractionResponse | tuple[ExtractionResponse, DocumentQuality]
+    ]
+    | None = None,
     tolerance: float = 0.01,
     data_dir: Path,
     output_dir: Path,

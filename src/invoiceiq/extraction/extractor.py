@@ -154,19 +154,25 @@ def _extract_usage(message: Any | None) -> TokenUsage | None:
 
     usage_metadata = getattr(message, "usage_metadata", None)
     if isinstance(usage_metadata, dict) and usage_metadata:
+        input_details = usage_metadata.get("input_token_details") or {}
         return TokenUsage(
             prompt_tokens=usage_metadata.get("input_tokens"),
             completion_tokens=usage_metadata.get("output_tokens"),
             total_tokens=usage_metadata.get("total_tokens"),
+            cached_prompt_tokens=input_details.get(
+                "cache_read", input_details.get("cached_tokens")
+            ),
         )
 
     response_metadata = getattr(message, "response_metadata", None) or {}
     token_usage = response_metadata.get("token_usage") or response_metadata.get("usage") or {}
     if token_usage:
+        prompt_details = token_usage.get("prompt_tokens_details") or {}
         return TokenUsage(
             prompt_tokens=token_usage.get("prompt_tokens"),
             completion_tokens=token_usage.get("completion_tokens"),
             total_tokens=token_usage.get("total_tokens"),
+            cached_prompt_tokens=prompt_details.get("cached_tokens"),
         )
 
     return None

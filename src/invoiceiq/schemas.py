@@ -120,9 +120,10 @@ class DocumentQuality(BaseModel):
 class TokenUsage(BaseModel):
     """Token counts reported by the LLM provider."""
 
-    prompt_tokens: int | None = None
-    completion_tokens: int | None = None
-    total_tokens: int | None = None
+    prompt_tokens: int | None = Field(default=None, ge=0)
+    completion_tokens: int | None = Field(default=None, ge=0)
+    total_tokens: int | None = Field(default=None, ge=0)
+    cached_prompt_tokens: int | None = Field(default=None, ge=0)
 
 
 class ExtractionResult(BaseModel):

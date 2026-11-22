@@ -1,5 +1,6 @@
 """Application configuration loaded from environment variables."""
 
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 
@@ -34,6 +35,18 @@ class Settings(BaseSettings):
     groq_max_tokens: int = 8192
     groq_timeout_seconds: float = 30.0
     groq_max_retries: int = 2
+    groq_pricing_model: str = "openai/gpt-oss-120b"
+    groq_input_price_per_million_usd: float = Field(
+        default=0.15, ge=0, allow_inf_nan=False
+    )
+    groq_cached_input_price_per_million_usd: float = Field(
+        default=0.075, ge=0, allow_inf_nan=False
+    )
+    groq_output_price_per_million_usd: float = Field(
+        default=0.60, ge=0, allow_inf_nan=False
+    )
+    groq_pricing_source_url: str = "https://console.groq.com/docs/model/openai/gpt-oss-120b"
+    groq_pricing_as_of: date = date(2026, 11, 22)
 
     tesseract_cmd: str = ""
     ocr_language: str = "eng"

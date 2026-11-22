@@ -29,6 +29,8 @@ data/uploads/
 data/outputs/
 data/samples/*
 !data/samples/.gitkeep
+outputs/
+/outputs.zip
 data/expected/*
 !data/expected/.gitkeep
 
