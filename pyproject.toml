@@ -32,6 +32,7 @@ dev = [
 
 [project.scripts]
 invoiceiq = "invoiceiq:main"
+invoiceiq-eval = "invoiceiq.evaluation.run_eval:main"
 
 [build-system]
 requires = ["uv_build>=0.13.8,<0.14.0"]

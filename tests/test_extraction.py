@@ -159,7 +159,7 @@ def test_build_llm_uses_environment_settings() -> None:
 
     assert llm.model_name == "test-model"
     assert llm.temperature <= 0.01
-    assert llm.max_tokens == 2048
+    assert llm.max_tokens == 8192
     assert llm.max_retries == 2
 
 

@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr = SecretStr("")
     groq_model: str = ""
     groq_temperature: float = 0.0
-    groq_max_tokens: int = 2048
+    groq_max_tokens: int = 8192
     groq_timeout_seconds: float = 30.0
     groq_max_retries: int = 2
 

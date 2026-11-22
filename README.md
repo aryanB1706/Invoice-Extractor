@@ -5,7 +5,7 @@ PyMuPDF, Tesseract OCR, Pydantic, Pandas, and Pytest.
 
 The application processes uploaded invoices through document processing, LLM
 extraction, schema validation, and mathematical business validation. Dataset
-evaluation remains for a later milestone.
+evaluation is available for the labelled assignment sample pack.
 
 ## Architecture
 
@@ -202,6 +202,49 @@ Dataset and live tests are skipped by default. The assignment pack lives under
 `data/samples/assignment/` and is ignored by Git. No accuracy numbers are
 asserted in the test suite; measure accuracy separately on the labelled set.
 
+### 7. Evaluate the labelled assignment set
+
+With `GROQ_API_KEY` and `GROQ_MODEL` configured, run this from the project root:
+
+```powershell
+python -m evaluation.run_eval
+```
+
+The command discovers every PDF/image in
+`data/samples/assignment/labelled/` and pairs it with the same-stem JSON
+ground-truth file (for example, `L01.pdf` and `L01.json`). It runs the normal
+document-processing, extraction, and validation pipeline on each document.
+Missing or unmatched files stop the evaluation rather than being skipped.
+Optional `--data-dir`, `--output-dir`, and `--tolerance` arguments override the
+defaults. The installed `invoiceiq-eval` command is also available.
+
+Results are written to `data/outputs/evaluation/` by default:
+
+- `predictions.json` and `predictions/<document>.json` contain each actual
+  prediction, model/usage metadata, and any pipeline error.
+- `evaluation.json` contains field comparisons, per-document details, and
+  aggregate metrics.
+- `report.md` contains the readable results, matching rules, and tuning
+  disclosure.
+
+Matching is intentionally strict and is also recorded in the generated report:
+
+- Text is compared after Unicode NFKC normalization, whitespace collapsing,
+  and case folding; punctuation and digits are preserved.
+- Dates must parse as ISO `YYYY-MM-DD` dates and match exactly.
+- Numeric fields use an absolute tolerance of `0.01` by default, so `1200` and
+  `1200.00` match but meaningful numeric differences do not.
+- `is_invoice` uses exact boolean matching. Null only matches null.
+- Line items are matched in printed order. The item count and each item's
+  normalized description, quantity, and amount must all match; extra, missing,
+  or misordered items are not ignored.
+- Overall accuracy is the unweighted mean of the eight field accuracies.
+  Failed extractions count as incorrect in every field and remain in the
+  denominator.
+
+The default `GROQ_MAX_TOKENS` was raised globally from 2048 to 8192; it is not
+configured per document. No model or prompt tuning is performed by evaluation.
+
 ## Status
 
 Implemented:
@@ -225,6 +268,8 @@ Implemented:
 - Mathematical validation with configurable tolerance and review flags
 - CLI document loader
 - In-memory upload processing without temporary files
+- Evaluation harness for the labelled assignment set with field-level,
+  line-item, classification, and overall metrics
 - End-to-end integration tests for digital PDFs, scans, images, multi-page
   documents, non-invoices, missing fields, unreadable files, corrupt PDFs, and
   Groq failures
@@ -233,5 +278,3 @@ Implemented:
 Reserved for the next prompts:
 
 - Upload persistence
-- Dataset evaluation metrics
-- Accuracy reporting
