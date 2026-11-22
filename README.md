@@ -69,9 +69,11 @@ InvoiceIQ/
 ├── pyproject.toml               # Package metadata, dependencies, tool config
 ├── requirements.txt             # Runtime and development dependencies
 ├── README.md                    # Project overview and setup
+├── evaluation/                  # Source-checkout command launchers
 ├── data/
-│   ├── samples/                 # Input invoices for manual testing
-│   └── expected/                # Ground-truth JSON for evaluation
+│   ├── samples/assignment/      # Labelled documents and same-stem Ground Truth JSON
+│   ├── expected/                # Reserved placeholder; not used by the assignment eval
+│   └── outputs/evaluation/      # Predictions, metrics, and failure analysis
 ├── src/invoiceiq/
 │   ├── __init__.py              # Package version and CLI entry point
 │   ├── config.py                # Environment-based settings (API key, model, OCR)
@@ -89,9 +91,13 @@ InvoiceIQ/
 │   ├── api/                     # FastAPI application
 │   │   ├── app.py               # App factory and health endpoint
 │   │   └── routes.py            # Upload/extract endpoint
-│   └── evaluation/              # Accuracy measurement
+│   └── evaluation/              # Accuracy and failure analysis
+│       ├── failure_analysis.py  # Error categories and human-review effectiveness
 │       ├── metrics.py           # Per-field comparison
-│       └── runner.py            # Dataset-level aggregation
+│       ├── models.py            # Evaluation result/report models
+│       ├── report.py            # Console and Markdown reports
+│       ├── run_eval.py          # Evaluation CLI
+│       └── runner.py            # Dataset-level aggregation and output
 └── tests/                       # Pytest suite for config, schemas, API, and loading
 ```
 
@@ -105,8 +111,9 @@ InvoiceIQ/
 | `src/invoiceiq/validation/` | Applies deterministic business rules to extracted data. |
 | `src/invoiceiq/api/` | Exposes the pipeline over HTTP. |
 | `src/invoiceiq/evaluation/` | Scores predictions against labelled invoices. |
-| `data/samples/` | Local invoices used for development. Ignored by Git. |
-| `data/expected/` | Labelled results used by evaluation. Ignored by Git. |
+| `data/samples/assignment/labelled/` | Labelled documents and their same-stem Ground Truth JSON. Ignored by Git. |
+| `data/expected/` | Empty placeholder; the assignment evaluator does not read it. |
+| `data/outputs/evaluation/` | Evaluation predictions, metrics, and failure analysis. Ignored by Git. |
 | `tests/` | Automated checks for the skeleton and future stages. |
 
 ### Important files
@@ -221,11 +228,14 @@ defaults. The installed `invoiceiq-eval` command is also available.
 Results are written to `data/outputs/evaluation/` by default:
 
 - `predictions.json` and `predictions/<document>.json` contain each actual
-  prediction, model/usage metadata, and any pipeline error.
+  prediction, model/usage metadata, OCR/document-quality signals, and any
+  pipeline error.
 - `evaluation.json` contains field comparisons, per-document details, and
   aggregate metrics.
 - `report.md` contains the readable results, matching rules, and tuning
   disclosure.
+- `failure_analysis.md` and `failure_analysis.json` group mismatches, preserve
+  representative examples, compare human-review outcomes, and list priorities.
 
 Matching is intentionally strict and is also recorded in the generated report:
 
@@ -242,8 +252,39 @@ Matching is intentionally strict and is also recorded in the generated report:
   Failed extractions count as incorrect in every field and remain in the
   denominator.
 
-The default `GROQ_MAX_TOKENS` was raised globally from 2048 to 8192; it is not
-configured per document. No model or prompt tuning is performed by evaluation.
+The global OCR render default is 300 DPI (raised from 200), and
+`GROQ_MAX_TOKENS` is 8192. After reviewing the baseline error categories, the
+prompt was revised generally to distinguish table columns and tax/grand-total
+labels; no sample-specific values were added. Since the labelled pack informed
+that revision, any new accuracy run on the same 10 documents is a post-analysis
+diagnostic, not an independent holdout score. The evaluation command itself
+does not tune the model.
+
+### 8. Analyze saved evaluation failures
+
+To analyze the Prompt 8 results already on disk without making additional LLM
+calls, run:
+
+```powershell
+python -m evaluation.analyze_failures
+```
+
+By default this reads `data/outputs/evaluation/evaluation.json`, checks the
+corresponding source documents for OCR/page-quality evidence, and writes
+`failure_analysis.md` and `failure_analysis.json` beside it. Use
+`--evaluation-file`, `--data-dir`, or `--output-dir` to override those paths.
+Categories can overlap. OCR attribution is reported as an association unless
+the processing step recorded a direct page error; mismatches alone cannot prove
+that OCR rather than downstream interpretation caused an error. A populated
+prediction against null Ground Truth is called a *possible* unsupported value,
+not asserted to be a hallucination without source-document evidence.
+
+The deterministic `needs_review` flag is set for invalid invoice fields or
+totals, missing invoice currency/vendor/number/date/total, incomplete line-item
+description/quantity/amount, failed extraction, page errors, or sparse OCR text.
+A correctly classified non-invoice is not flagged merely because invoice
+business validation does not apply. This is a rule-based review signal, not a
+calibrated confidence score.
 
 ## Status
 
@@ -270,6 +311,8 @@ Implemented:
 - In-memory upload processing without temporary files
 - Evaluation harness for the labelled assignment set with field-level,
   line-item, classification, and overall metrics
+- Failure analysis with evidence-backed categories, representative examples,
+  OCR/document-quality diagnostics, and human-review effectiveness metrics
 - End-to-end integration tests for digital PDFs, scans, images, multi-page
   documents, non-invoices, missing fields, unreadable files, corrupt PDFs, and
   Groq failures

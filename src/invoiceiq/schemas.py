@@ -108,6 +108,15 @@ class ValidationReport(BaseModel):
     issues: list[ValidationIssue] = Field(default_factory=list)
 
 
+class DocumentQuality(BaseModel):
+    """Document-processing signals recorded for evaluation diagnostics."""
+
+    page_count: int
+    ocr_pages: int
+    text_characters: int
+    page_errors: list[str] = Field(default_factory=list)
+
+
 class TokenUsage(BaseModel):
     """Token counts reported by the LLM provider."""
 

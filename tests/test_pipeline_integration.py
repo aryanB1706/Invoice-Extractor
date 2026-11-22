@@ -226,7 +226,7 @@ def test_non_invoice_documents_return_null_invoice_fields(
     body = response.json()
     assert body["invoice"]["is_invoice"] is False
     assert all(value is None for key, value in body["invoice"].items() if key != "is_invoice")
-    assert body["needs_review"] is True
+    assert body["needs_review"] is False
 
 
 def test_missing_invoice_number_is_returned_for_review(

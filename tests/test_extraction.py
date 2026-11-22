@@ -177,7 +177,10 @@ def test_prompt_contains_exact_extraction_rules() -> None:
     assert "bank statements" in prompt_text
     assert "purchase orders" in prompt_text
     assert "cover letters" in prompt_text
-    assert "subtotal" not in prompt_text
+    assert "subtotal" in prompt_text
+    assert "explicit quantity/qty column" in prompt_text
+    assert "unit price" in prompt_text
+    assert "Never move a value between these fields" in prompt_text
     assert "Invoice total 10" in prompt_text
 
 

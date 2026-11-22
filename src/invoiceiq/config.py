@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     tesseract_cmd: str = ""
     ocr_language: str = "eng"
     ocr_min_text_chars: int = 50
-    ocr_render_dpi: int = 200
+    ocr_render_dpi: int = 300
     ocr_auto_rotate: bool = True
 
     max_upload_mb: int = Field(default=10, ge=1)

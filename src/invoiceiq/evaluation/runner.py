@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from invoiceiq.api.service import process_document
+from invoiceiq.evaluation.failure_analysis import write_failure_analysis
 from invoiceiq.evaluation.metrics import compare_invoices, failed_field_comparisons
 from invoiceiq.evaluation.models import (
     DocumentEvaluation,
@@ -17,7 +18,7 @@ from invoiceiq.evaluation.models import (
     LineItemSummary,
 )
 from invoiceiq.evaluation.report import format_markdown
-from invoiceiq.schemas import ExtractionResponse, Invoice
+from invoiceiq.schemas import DocumentQuality, ExtractionResponse, Invoice
 
 DOCUMENT_SUFFIXES = {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
 
@@ -40,13 +41,15 @@ MATCHING_RULES = [
 ]
 
 TUNING_DISCLOSURE = (
-    "The extraction prompt was not tuned per document or against individual "
-    "ground-truth answers. During earlier integration testing, L01 and L02 were "
-    "used as smoke checks. The only prompt change before this evaluation was "
-    "the tax_total=0 convention for zero/no-tax invoices, which comes from the "
-    "assignment README, not from fitting the labelled answers. GROQ_MAX_TOKENS "
-    "was also increased globally from 2048 to 8192; it is not configured per "
-    "document. The labelled set is used here only to measure accuracy."
+    "The baseline evaluation preceded this revision. After reviewing aggregate "
+    "failure categories, the prompt was updated globally to distinguish quantity, "
+    "unit price, line amount, tax, and grand total by their printed table headers, "
+    "and to map only unambiguous currency symbols. No sample-specific values were "
+    "added. OCR_RENDER_DPI was raised globally from 200 to 300 and "
+    "GROQ_MAX_TOKENS from 2048 to 8192. Because these changes follow analysis of "
+    "the labelled set, any rerun on those same 10 documents is a post-analysis "
+    "diagnostic, not an independent holdout score. The earlier tax_total=0 "
+    "convention comes from the assignment instructions."
 )
 
 
@@ -110,7 +113,6 @@ def run_evaluation(
     progress: Callable[[int, int, LabelledDocument], None] | None = None,
 ) -> list[DocumentEvaluation]:
     """Run the pipeline over every labelled document and compare results."""
-    process = process or process_document
     results: list[DocumentEvaluation] = []
 
     for index, item in enumerate(documents, start=1):
@@ -119,9 +121,20 @@ def run_evaluation(
 
         expected_data = json.loads(item.ground_truth.read_text(encoding="utf-8"))
         expected_invoice = Invoice.model_validate(expected_data)
+        document_quality: DocumentQuality | None = None
+
+        def capture_quality(quality: DocumentQuality) -> None:
+            nonlocal document_quality
+            document_quality = quality
 
         try:
-            response = process(item.document)
+            if process is None:
+                response = process_document(
+                    item.document,
+                    on_pages_loaded=capture_quality,
+                )
+            else:
+                response = process(item.document)
         except Exception as exc:  # noqa: BLE001 - record any pipeline failure
             results.append(
                 DocumentEvaluation(
@@ -132,6 +145,8 @@ def run_evaluation(
                     fully_correct=False,
                     expected=expected_data,
                     predicted=None,
+                    document_quality=document_quality,
+                    needs_review=True,
                 )
             )
             continue
@@ -150,6 +165,7 @@ def run_evaluation(
                 expected=expected_data,
                 predicted=response.invoice.model_dump(mode="json"),
                 validation=response.validation.model_dump(mode="json"),
+                document_quality=document_quality,
                 needs_review=response.needs_review,
                 warnings=response.warnings,
                 model=response.model,
@@ -268,6 +284,11 @@ def write_outputs(report: EvaluationReport, output_dir: str | Path) -> dict[str,
             "model": document.model,
             "usage": document.usage,
             "error": document.error,
+            "document_quality": (
+                document.document_quality.model_dump(mode="json")
+                if document.document_quality
+                else None
+            ),
             "needs_review": document.needs_review,
             "warnings": document.warnings,
             "prediction": document.predicted,
@@ -278,11 +299,13 @@ def write_outputs(report: EvaluationReport, output_dir: str | Path) -> dict[str,
         "predictions": resolved / "predictions.json",
         "evaluation": resolved / "evaluation.json",
         "report": resolved / "report.md",
+        "failure_analysis": resolved / "failure_analysis.md",
     }
 
     _write_json(paths["predictions"], predictions)
     _write_json(paths["evaluation"], report.model_dump(mode="json"))
     paths["report"].write_text(format_markdown(report), encoding="utf-8")
+    write_failure_analysis(report, resolved)
 
     for document in report.documents:
         stem = Path(document.document).stem
@@ -294,6 +317,11 @@ def write_outputs(report: EvaluationReport, output_dir: str | Path) -> dict[str,
                 "model": document.model,
                 "usage": document.usage,
                 "error": document.error,
+                "document_quality": (
+                    document.document_quality.model_dump(mode="json")
+                    if document.document_quality
+                    else None
+                ),
                 "needs_review": document.needs_review,
                 "warnings": document.warnings,
                 "prediction": document.predicted,

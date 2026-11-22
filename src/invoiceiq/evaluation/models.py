@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from invoiceiq.schemas import DocumentQuality
+
 FIELDS: tuple[str, ...] = (
     "is_invoice",
     "vendor",
@@ -51,7 +53,8 @@ class DocumentEvaluation(BaseModel):
     expected: dict[str, Any] | None = None
     predicted: dict[str, Any] | None = None
     validation: dict[str, Any] | None = None
-    needs_review: bool | None = None
+    document_quality: DocumentQuality | None = None
+    needs_review: bool = False
     warnings: list[str] = Field(default_factory=list)
     model: str | None = None
     usage: dict[str, Any] | None = None

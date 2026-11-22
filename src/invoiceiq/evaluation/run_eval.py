@@ -97,6 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     print(format_console_report(report))
     print()
     print(f"Saved predictions and results to {output_dir}")
+    print(f"Saved failure analysis to {output_dir / 'failure_analysis.md'}")
     return 0
 
 

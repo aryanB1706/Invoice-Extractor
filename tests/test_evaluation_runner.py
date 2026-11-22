@@ -148,6 +148,7 @@ def test_run_evaluation_counts_pipeline_failures_as_incorrect(tmp_path: Path) ->
 
     assert results[0].error == "RuntimeError: pipeline exploded"
     assert results[0].predicted is None
+    assert results[0].needs_review is True
     assert all(comparison.match is False for comparison in results[0].fields.values())
     assert summary.overall_accuracy == 0.0
     assert summary.failed_documents == 1

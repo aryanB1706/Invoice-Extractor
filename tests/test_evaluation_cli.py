@@ -1,6 +1,7 @@
 """CLI tests for the evaluation harness."""
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +9,13 @@ from pydantic import SecretStr
 
 from invoiceiq.config import Settings
 from invoiceiq.evaluation import run_eval, runner
-from invoiceiq.schemas import ExtractionResponse, Invoice, TokenUsage, ValidationReport
+from invoiceiq.schemas import (
+    DocumentQuality,
+    ExtractionResponse,
+    Invoice,
+    TokenUsage,
+    ValidationReport,
+)
 
 
 def _invoice_payload() -> dict[str, Any]:
@@ -51,7 +58,19 @@ def test_cli_runs_with_injected_pipeline(
     output_dir = tmp_path / "output"
     _write_dataset(data_dir, payloads)
 
-    def fake_process(path: Path) -> ExtractionResponse:
+    def fake_process(
+        path: Path,
+        *,
+        on_pages_loaded: Callable[[DocumentQuality], None] | None = None,
+    ) -> ExtractionResponse:
+        if on_pages_loaded is not None:
+            on_pages_loaded(
+                DocumentQuality(
+                    page_count=1,
+                    ocr_pages=0,
+                    text_characters=100,
+                )
+            )
         return ExtractionResponse(
             invoice=Invoice.model_validate(payloads[path.stem]),
             validation=ValidationReport(is_valid=True),
